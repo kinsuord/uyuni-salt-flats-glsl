@@ -78,13 +78,27 @@ struct
     } quad;
 } uniforms;
 
+// loading function
 char** loadShaderSource(const char* file);
 void loadModel();
-void linkProgram(GLuint program, const char* vertexFile, const char* fragmentFile);
-void My_Keyboard(unsigned char key, int x, int y);
 TextureData loadImage(const char* const Filepath);
-void drawModel();
+
+// opengl
+void linkProgram(GLuint program, const char* vertexFile, const char* fragmentFile);
 void bindFrameToTex(Frame &frame);
+
+// glut
+void My_Keyboard(unsigned char key, int x, int y);
+void My_Mouse(int button, int state, int x, int y);
+void My_MouseMove(int x,int y);
+void My_MouseWheel(int button, int dir, int x, int y);
+
+// trackball
+vec3 projectToSphere(vec2 xy);
+vec2 scaleMouse(vec2 mouse);
+
+// draw
+void drawModel();
 
 // shader program
 Shader skybox;
@@ -108,6 +122,10 @@ float rotate_angle=0.0f;
 int width, height;
 int showmode = 3;
 
+// track ball
+vec2 mouseXY;
+float camera_speed=1;
+
 void My_Init()
 {
     glEnable(GL_DEPTH_TEST);
@@ -124,12 +142,12 @@ void My_Init()
 
 	vector<string> faces
 	{
-		"cubemaps\\face-r.png",
-		"cubemaps\\face-l.png",
-		"cubemaps\\face-t.png",
-		"cubemaps\\face-d.png",
-		"cubemaps\\face-f.png",
-		"cubemaps\\face-b.png"
+		"cubemaps\\r.png",
+		"cubemaps\\l.png",
+		"cubemaps\\t.png",
+		"cubemaps\\d.png",
+		"cubemaps\\b.png",
+		"cubemaps\\f.png"
 	};
 
 	glGenTextures(1, &skybox.texture);
@@ -367,6 +385,11 @@ void bindFrameToTex(Frame &frame)
 	
 }
 
+void My_MouseWheel(int button, int dir, int x, int y)
+{
+	view_position += view_direction * camera_speed *float(dir) * 3.0f;
+}
+
 void My_Timer(int val)
 {
 	glutPostRedisplay();
@@ -389,7 +412,7 @@ int main(int argc, char *argv[])
 #endif
 	glutInitWindowPosition(100, 100);
 	glutInitWindowSize(1400, 900);
-	glutCreateWindow("AS3"); // You cannot use OpenGL functions before this line; The OpenGL context must be created first by glutCreateWindow()!
+	glutCreateWindow("Final"); // You cannot use OpenGL functions before this line; The OpenGL context must be created first by glutCreateWindow()!
 #ifdef _MSC_VER
 	glewInit();
 #endif
@@ -400,6 +423,9 @@ int main(int argc, char *argv[])
 	glutDisplayFunc(My_Display);
 	glutReshapeFunc(My_Reshape);
 	glutKeyboardFunc(My_Keyboard);
+	glutMouseFunc(My_Mouse);
+	glutMotionFunc(My_MouseMove);
+	glutMouseWheelFunc(My_MouseWheel);
 	glutTimerFunc(timer_speed, My_Timer, 0); 
 
 	// Enter main event loop.
@@ -541,6 +567,58 @@ void loadModel()
 	}
 }
 
+void My_Mouse(int button, int state, int x, int y)
+{
+	
+	mouseXY = vec2(x, y);
+}
+
+vec2 scaleMouse(vec2 mouse)
+{
+	float x = float(mouse.x) / width * 2.0f - 1.0f;
+	float y = float(mouse.y) / height * 2.0f - 1.0f;
+	return vec2(x, y);
+}
+
+vec3 projectToSphere(vec2 xy) {
+    static const float sqrt2 = sqrtf(2.f);
+    vec3 result;
+    float d = length(xy);
+    float size_=2;
+    if (d < size_ * sqrt2 / 2.f) {
+        // Inside sphere
+        result.z = sqrtf(size_ * size_ - d*d);
+    }
+    else {
+        // On hyperbola
+        float t = size_ / sqrt2;
+        result.z = t*t / d;
+    }
+    result.x = xy.x;
+    result.y = xy.y;
+    return normalize(result);
+}
+
+void My_MouseMove(int x,int y)
+{
+
+	vec2 oldMouse = scaleMouse(mouseXY);
+	vec2 newMouse = scaleMouse(vec2(x, y));
+	vec3 oldPosi = projectToSphere(oldMouse);
+	vec3 newPosi = projectToSphere(newMouse);
+
+	float anglex = newPosi.x - oldPosi.x;
+	float angley = newPosi.y - oldPosi.y;
+
+	vec3 right = cross(vec3(0.0, 1.0, 0.0), view_direction);
+	vec3 normal = cross(right, view_direction);
+
+	mat4 rotate_matrix = rotate(mat4(), anglex, normal);
+	rotate_matrix = rotate(rotate_matrix, angley, right);
+	view_direction = (vec4(view_direction, 0.0f) * rotate_matrix).xyz;
+
+	mouseXY = vec2(x,y);
+}
 
 void My_Keyboard(unsigned char key, int x, int y)
 {
