@@ -4,7 +4,7 @@
   in vec3 fsun;
   
   layout(location = 0) out vec4 color;
-  uniform float time = 0.0;
+  uniform float cloud_time = 0.0;
   uniform float cirrus = 0.4;
   uniform float cumulus = 0.8;
 
@@ -53,16 +53,17 @@
     color.rgb = 3.0 / (8.0 * 3.14) * (1.0 + mu * mu) * (Kr + Km * (1.0 - g * g) / (2.0 + g * g) / pow(1.0 + g * g - 2.0 * g * mu, 1.5)) / (Br + Bm) * extinction;
 
     // Cirrus Clouds
-    float density = smoothstep(1.0 - cirrus, 1.0, fbm(pos.xyz / pos.y * 2.0 + time * 0.05)) * 0.3;
+    float density = smoothstep(1.0 - cirrus, 1.0, fbm(pos.xyz / pos.y * 2.0 + cloud_time * 0.05)) * 0.3;
     color.rgb = mix(color.rgb, extinction * 4.0, density * max(pos.y, 0.0));
 
     // Cumulus Clouds
     for (int i = 0; i < 3; i++)
     {
-      float density = smoothstep(1.0 - cumulus, 1.0, fbm((0.7 + float(i) * 0.01) * pos.xyz / pos.y + time * 0.3));
+      float density = smoothstep(1.0 - cumulus, 1.0, fbm((0.7 + float(i) * 0.01) * pos.xyz / pos.y + cloud_time * 0.3));
       color.rgb = mix(color.rgb, extinction * density * 5.0, min(density, 1.0) * max(pos.y, 0.0));
     }
 
     // Dithering Noise
     color.rgb += noise(pos * 1000) * 0.01;
+    color.rgb = pow(1.0 - exp(-1.3 * color.rgb), vec3(1.3));
   }

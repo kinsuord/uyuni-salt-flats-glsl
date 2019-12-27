@@ -1,3 +1,9 @@
 # uyuni-salt-flats-glsl
 
-Hi!
+## Must DO
+- [] Lens Flare
+- [] GUI controll cloud
+- [] sky box stancil mask
+
+## Probably do
+- [] Volumetric clouds

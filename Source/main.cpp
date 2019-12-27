@@ -74,7 +74,8 @@ struct
 	{
 		GLint um4p;
 		GLint um4v;
-		GLint ftime;
+		GLint cloud_time;
+		GLint sun_time;
 	}sky;
 	
 } uniforms;
@@ -91,7 +92,6 @@ TextureData loadImage(const char* const Filepath);
 void linkProgram(GLuint program, const char* vertexFile, const char* fragmentFile);
 void bindFrameToTex(Frame &frame);
 
-
 // trackball
 vec3 projectToSphere(vec2 xy);
 vec2 scaleMouse(vec2 mouse);
@@ -99,8 +99,10 @@ vec2 scaleMouse(vec2 mouse);
 // draw
 void drawModel();
 
-// glut
+// glut GUI
+void My_Menu(int id);
 void My_Init();
+void TW_CALL My_Exit(void *);
 void My_Display();
 void My_Reshape(int w, int h);
 void My_Keyboard(unsigned char key, int x, int y);
@@ -130,6 +132,18 @@ int width, height;
 // track ball
 vec2 mouseXY;
 float camera_speed=1;
+
+// clock
+float time=0.0f;
+
+// sky
+float sun_time = 0.0f;
+float sun_speed=300.0f;
+float cloud_time = 0.0f;
+float cloud_speed=200.0f;
+
+// UI
+bool show_tweakbar = true;
 
 char** loadShaderSource(const char* file)
 {
@@ -316,72 +330,6 @@ vec3 projectToSphere(vec2 xy) {
     return normalize(result);
 }
 
-void My_Mouse(int button, int state, int x, int y)
-{
-	
-	mouseXY = vec2(x, y);
-}
-
-void My_MouseMove(int x,int y)
-{
-
-	vec2 oldMouse = scaleMouse(mouseXY);
-	vec2 newMouse = scaleMouse(vec2(x, y));
-	vec3 oldPosi = projectToSphere(oldMouse);
-	vec3 newPosi = projectToSphere(newMouse);
-
-	float anglex = newPosi.x - oldPosi.x;
-	float angley = newPosi.y - oldPosi.y;
-
-	vec3 right = cross(vec3(0.0, 1.0, 0.0), view_direction);
-	vec3 normal = cross(right, view_direction);
-
-	mat4 rotate_matrix = rotate(mat4(), anglex, normal);
-	rotate_matrix = rotate(rotate_matrix, angley, right);
-	view_direction = (vec4(view_direction, 0.0f) * rotate_matrix).xyz;
-
-	mouseXY = vec2(x,y);
-}
-
-void My_Keyboard(unsigned char key, int x, int y)
-{
-	printf("Key %c is pressed at (%d, %d)\n", key, x, y);
-
-	switch(key) {
-		case 'q':
-			rotate_angle += 10.0f;
-		break;
-
-		case 'e':
-			rotate_angle += -10.0f;
-		break;
-		
-		case 'w':
-			view_position += vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
-		break;
-
-		case 's':
-			view_position += -vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
-		break;
-
-		case 'd':
-			view_position += vec3(-view_direction.z, 0.0, view_direction.x) * camera_speed;
-		break;
-
-		case 'a':
-			view_position += vec3(view_direction.z, 0.0, -view_direction.x) * camera_speed;
-		break;
-
-		case 'z':
-			view_position += vec3(0, 1, 0) * camera_speed;;
-		break;
-
-		case 'x':
-			view_position += vec3(0, -1, 0) * camera_speed;
-		break;
-	}
-}
-
 void My_Init()
 {
     glEnable(GL_DEPTH_TEST);
@@ -426,7 +374,8 @@ void My_Init()
 	linkProgram(sky.program, "sky.vs.glsl", "sky.fs.glsl");
 	uniforms.sky.um4p = glGetUniformLocation(sky.program, "P");
 	uniforms.sky.um4v = glGetUniformLocation(sky.program, "V");
-	uniforms.sky.ftime = glGetUniformLocation(sky.program, "time");
+	uniforms.sky.sun_time = glGetUniformLocation(sky.program, "sun_time");
+	uniforms.sky.cloud_time = glGetUniformLocation(sky.program, "cloud_time");
 
 	// ==== load data to vao vbo ====
 
@@ -488,9 +437,20 @@ void My_Init()
 
 	// ==== GUI setup ====
 	TwInit(TW_OPENGL_CORE, NULL);
-	TwWindowSize(600, 800);
 	TwBar *myBar;
-	myBar = TwNewBar("NameOfMyTweakBar");
+	myBar = TwNewBar("TweakBar");
+	TwDefine(" GLOBAL help='This example shows how to integrate AntTweakBar with GLUT and OpenGL.' "); // Message added to the help bar.
+    TwDefine(" TweakBar size='200 400' color='96 216 224' "); // change default tweak bar size and color
+
+    TwAddVarRW(myBar, "Sun Speed", TW_TYPE_FLOAT, &sun_speed, 
+               " min=-2000 max=4000.0 step=100 help='Change the speed of sun' group=Sky");
+    TwAddVarRW(myBar, "Cloud Speed", TW_TYPE_FLOAT, &cloud_speed, 
+               " min=0 max=1000.0 step=50 help='Change the speed of cloud' group=Sky");
+    TwAddVarRW(myBar, "Sun Time", TW_TYPE_FLOAT, &sun_time, 
+               " min=0 step=0.1 help='Sun Timer' group=Sky");
+    TwAddVarRW(myBar, "Cloud Time", TW_TYPE_FLOAT, &cloud_time, 
+               " min=0 step=0.1 help='Cloud timer' group=Sky");
+	TwAddButton(myBar, "Exit", My_Exit, NULL, " ");
 }
 
 void My_Display()
@@ -538,26 +498,28 @@ void My_Display()
 	glClearBufferfv(GL_COLOR, 0, gray);
 	glClearBufferfv(GL_DEPTH, 0, ones);
 
-	// // draw sky box
-	// vec3 eye = vec3(0.0f, 0.0f, 0.0f);
-	// mat4 inv_vp_matrix = inverse(proj_matrix * view_matrix);
+	// draw sky box
+	vec3 eye = vec3(0.0f, 0.0f, 0.0f);
+	mat4 inv_vp_matrix = inverse(proj_matrix * view_matrix);
 
-	// glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
 
-	// glUseProgram(skybox.program);
-	// glBindVertexArray(skybox.vaos[0]);
+	glUseProgram(skybox.program);
+	glBindVertexArray(skybox.vaos[0]);
 
-	// glUniformMatrix4fv(uniforms.skybox.inv_vp_matrix, 1, GL_FALSE, &inv_vp_matrix[0][0]);
-	// glUniform3fv(uniforms.skybox.eye, 1, &eye[0]);
+	glUniformMatrix4fv(uniforms.skybox.inv_vp_matrix, 1, GL_FALSE, &inv_vp_matrix[0][0]);
+	glUniform3fv(uniforms.skybox.eye, 1, &eye[0]);
 
-	// glDisable(GL_DEPTH_TEST);
-	// glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	// glEnable(GL_DEPTH_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	glEnable(GL_DEPTH_TEST);
 
 	// draw sky
 	glUseProgram(sky.program);
 	glUniformMatrix4fv(uniforms.sky.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
   	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+  	glUniform1f(uniforms.sky.sun_time, sun_time);
+  	glUniform1f(uniforms.sky.cloud_time, cloud_time);
 	
 	glBindVertexArray(sky.vaos[0]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -586,7 +548,8 @@ void My_Display()
 	}
 
 	// draw GUI
-	TwDraw();
+	if(show_tweakbar)
+		TwDraw();
 
 	glutSwapBuffers();
 }
@@ -598,6 +561,95 @@ void My_Reshape(int w, int h)
 	glViewport(0, 0, width, height);
 	float viewportAspect = (float)width / (float)height;
 	proj_matrix = perspective(radians(80.0f), viewportAspect, 0.1f, 1000.0f);
+	TwWindowSize(width, height);
+}
+
+void TW_CALL My_Exit(void *)
+{
+	exit(0);
+}
+
+void My_Timer(int val)
+{
+	glutPostRedisplay();
+	time += timer_speed * 0.000001f;
+	sun_time += sun_speed * timer_speed * 0.000001f;
+	cloud_time += cloud_speed * timer_speed * 0.000001f;
+	glutTimerFunc(20, My_Timer, val);
+}
+
+void My_Mouse(int button, int state, int x, int y)
+{
+	if( !TwEventMouseButtonGLUT(button, state, x, y))
+	{
+		mouseXY = vec2(x, y);
+	}
+}
+
+void My_MouseMove(int x,int y)
+{
+	if( !TwEventMouseMotionGLUT(x, y))
+	{
+		vec2 oldMouse = scaleMouse(mouseXY);
+		vec2 newMouse = scaleMouse(vec2(x, y));
+		vec3 oldPosi = projectToSphere(oldMouse);
+		vec3 newPosi = projectToSphere(newMouse);
+
+		float anglex = newPosi.x - oldPosi.x;
+		float angley = newPosi.y - oldPosi.y;
+
+		vec3 right = cross(vec3(0.0, 1.0, 0.0), view_direction);
+		vec3 normal = cross(right, view_direction);
+
+		mat4 rotate_matrix = rotate(mat4(), anglex, normal);
+		rotate_matrix = rotate(rotate_matrix, angley, right);
+		view_direction = (vec4(view_direction, 0.0f) * rotate_matrix).xyz;
+
+		mouseXY = vec2(x,y);
+	}
+}
+
+void My_Keyboard(unsigned char key, int x, int y)
+{
+	if( !TwEventKeyboardGLUT(key, x, y))
+	{
+		printf("Key %c is pressed at (%d, %d)\n", key, x, y);
+
+		switch(key) {
+			case 'q':
+				rotate_angle += 10.0f;
+			break;
+
+			case 'e':
+				rotate_angle += -10.0f;
+			break;
+
+			case 'w':
+				view_position += vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
+			break;
+
+			case 's':
+				view_position += -vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
+			break;
+
+			case 'd':
+				view_position += vec3(-view_direction.z, 0.0, view_direction.x) * camera_speed;
+			break;
+
+			case 'a':
+				view_position += vec3(view_direction.z, 0.0, -view_direction.x) * camera_speed;
+			break;
+
+			case 32:
+				view_position += vec3(0, 1, 0) * camera_speed;
+			break;
+
+			case 'z':
+				view_position += vec3(0, -1, 0) * camera_speed;
+			break;
+		}
+
+	}
 }
 
 void My_MouseWheel(int button, int dir, int x, int y)
@@ -605,10 +657,9 @@ void My_MouseWheel(int button, int dir, int x, int y)
 	view_position += view_direction * camera_speed * float(dir);
 }
 
-void My_Timer(int val)
+void My_Terminate(void)
 {
-	glutPostRedisplay();
-	glutTimerFunc(20, My_Timer, val);
+    TwTerminate();
 }
 
 int main(int argc, char *argv[])
@@ -634,7 +685,24 @@ int main(int argc, char *argv[])
     glPrintContextInfo();
 	My_Init();
 
-	// Register GLUT callback functions.
+	//Tw Event 
+	// Set GLUT event callbacks
+    // - Directly redirect GLUT mouse button events to AntTweakBar
+    glutMouseFunc((GLUTmousebuttonfun)TwEventMouseButtonGLUT);
+    // - Directly redirect GLUT mouse motion events to AntTweakBar
+    glutMotionFunc((GLUTmousemotionfun)TwEventMouseMotionGLUT);
+    // - Directly redirect GLUT mouse "passive" motion events to AntTweakBar (same as MouseMotion)
+    glutPassiveMotionFunc((GLUTmousemotionfun)TwEventMouseMotionGLUT);
+    // - Directly redirect GLUT key events to AntTweakBar
+    glutKeyboardFunc((GLUTkeyboardfun)TwEventKeyboardGLUT);
+    // - Directly redirect GLUT special key events to AntTweakBar
+    glutSpecialFunc((GLUTspecialfun)TwEventSpecialGLUT);
+    // - Send 'glutGetModifers' function pointer to AntTweakBar;
+    //   required because the GLUT key event functions do not report key modifiers states.
+    TwGLUTModifiersFunc(glutGetModifiers);
+
+
+	// // Register GLUT callback functions.
 	glutDisplayFunc(My_Display);
 	glutReshapeFunc(My_Reshape);
 	glutKeyboardFunc(My_Keyboard);
@@ -642,6 +710,7 @@ int main(int argc, char *argv[])
 	glutMotionFunc(My_MouseMove);
 	glutMouseWheelFunc(My_MouseWheel);
 	glutTimerFunc(timer_speed, My_Timer, 0); 
+	atexit(My_Terminate);
 
 	// Enter main event loop.
 	glutMainLoop();
