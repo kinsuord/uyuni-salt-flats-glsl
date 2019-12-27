@@ -1,4 +1,5 @@
 #include "../Externals/Include/Include.h"
+#include "../Externals/Include/AntTweakBar.h"
 
 using namespace glm;
 using namespace std;
@@ -64,13 +65,6 @@ struct
     } light;
     struct
     {
-        GLint sobj_tex;
-        GLint snoobj_tex;
-        GLint sb_tex;
-        GLint showmode;
-    } window;
-    struct
-    {
         GLint um4mvp;
 		GLint tex_shadow;
 		GLint drawshadow;
@@ -132,7 +126,6 @@ vec3 view_position;			 // a 3 dimension vector which represents how far did the 
 vec3 view_direction;
 float rotate_angle=0.0f;
 int width, height;
-int showmode = 3;
 
 // track ball
 vec2 mouseXY;
@@ -362,9 +355,29 @@ void My_Keyboard(unsigned char key, int x, int y)
 		case 'e':
 			rotate_angle += -10.0f;
 		break;
+		
+		case 'w':
+			view_position += vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
+		break;
 
-		case 'i':
-			showmode = (showmode+1) % 4;
+		case 's':
+			view_position += -vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
+		break;
+
+		case 'd':
+			view_position += vec3(-view_direction.z, 0.0, view_direction.x) * camera_speed;
+		break;
+
+		case 'a':
+			view_position += vec3(view_direction.z, 0.0, -view_direction.x) * camera_speed;
+		break;
+
+		case 'z':
+			view_position += vec3(0, 1, 0) * camera_speed;;
+		break;
+
+		case 'x':
+			view_position += vec3(0, -1, 0) * camera_speed;
 		break;
 	}
 }
@@ -441,12 +454,18 @@ void My_Init()
 	glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
     
-	GLuint vao;
-	skybox.vaos.push_back(vao);
+	GLuint skybox_vao;
+	skybox.vaos.push_back(skybox_vao);
     glGenVertexArrays(1, &skybox.vaos[0]);
 
 	// load model
 	loadModel();
+
+	// load sky 
+	GLuint sky_vao, sky_vbo;
+	sky.vaos.push_back(sky_vao);
+    glGenVertexArrays(1, &sky.vaos[0]);
+	glBindVertexArray(sky.vaos[0]);
 
 	// shadow frameobject
 	glGenFramebuffers(1, &depthmap.fbo);
@@ -466,6 +485,12 @@ void My_Init()
 	// ==== setup viewing position and rotation ====
 	view_position = vec3(0.0f, 0.0f, 0.0f);
 	view_direction = normalize(vec3(-1.0f, -1.0f, 0.0f));	
+
+	// ==== GUI setup ====
+	TwInit(TW_OPENGL_CORE, NULL);
+	TwWindowSize(600, 800);
+	TwBar *myBar;
+	myBar = TwNewBar("NameOfMyTweakBar");
 }
 
 void My_Display()
@@ -513,21 +538,29 @@ void My_Display()
 	glClearBufferfv(GL_COLOR, 0, gray);
 	glClearBufferfv(GL_DEPTH, 0, ones);
 
-	// draw sky box
-	vec3 eye = vec3(0.0f, 0.0f, 0.0f);
-	mat4 inv_vp_matrix = inverse(proj_matrix * view_matrix);
+	// // draw sky box
+	// vec3 eye = vec3(0.0f, 0.0f, 0.0f);
+	// mat4 inv_vp_matrix = inverse(proj_matrix * view_matrix);
 
-	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
+	// glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
 
-	glUseProgram(skybox.program);
-	glBindVertexArray(skybox.vaos[0]);
+	// glUseProgram(skybox.program);
+	// glBindVertexArray(skybox.vaos[0]);
 
-	glUniformMatrix4fv(uniforms.skybox.inv_vp_matrix, 1, GL_FALSE, &inv_vp_matrix[0][0]);
-	glUniform3fv(uniforms.skybox.eye, 1, &eye[0]);
+	// glUniformMatrix4fv(uniforms.skybox.inv_vp_matrix, 1, GL_FALSE, &inv_vp_matrix[0][0]);
+	// glUniform3fv(uniforms.skybox.eye, 1, &eye[0]);
 
-	glDisable(GL_DEPTH_TEST);
+	// glDisable(GL_DEPTH_TEST);
+	// glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	// glEnable(GL_DEPTH_TEST);
+
+	// draw sky
+	glUseProgram(sky.program);
+	glUniformMatrix4fv(uniforms.sky.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
+  	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+	
+	glBindVertexArray(sky.vaos[0]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-	glEnable(GL_DEPTH_TEST);
 
 	// draw model
 	mat4 shadow_matrix = shadow_sbpv_matrix * model_matrix;
@@ -551,6 +584,9 @@ void My_Display()
 		glBindVertexArray(model.vaos[i]);
 		glDrawElements(GL_TRIANGLES, model.index_counts[i], GL_UNSIGNED_INT, 0);
 	}
+
+	// draw GUI
+	TwDraw();
 
 	glutSwapBuffers();
 }
