@@ -76,6 +76,8 @@ struct
 		GLint um4v;
 		GLint cloud_time;
 		GLint sun_time;
+		GLint cirrus;
+		GLint cumulus;
 	}sky;
 	
 } uniforms;
@@ -141,9 +143,8 @@ float sun_time = 0.0f;
 float sun_speed=300.0f;
 float cloud_time = 0.0f;
 float cloud_speed=200.0f;
-
-// UI
-bool show_tweakbar = true;
+float cumulus_clouds = 0.6f;
+float cirrus_clouds = 0.4f;
 
 char** loadShaderSource(const char* file)
 {
@@ -376,6 +377,8 @@ void My_Init()
 	uniforms.sky.um4v = glGetUniformLocation(sky.program, "V");
 	uniforms.sky.sun_time = glGetUniformLocation(sky.program, "sun_time");
 	uniforms.sky.cloud_time = glGetUniformLocation(sky.program, "cloud_time");
+	uniforms.sky.cumulus = glGetUniformLocation(sky.program, "cumulus");
+	uniforms.sky.cirrus = glGetUniformLocation(sky.program, "cirrus");
 
 	// ==== load data to vao vbo ====
 
@@ -442,14 +445,19 @@ void My_Init()
 	TwDefine(" GLOBAL help='This example shows how to integrate AntTweakBar with GLUT and OpenGL.' "); // Message added to the help bar.
     TwDefine(" TweakBar size='200 400' color='96 216 224' "); // change default tweak bar size and color
 
+	TwAddVarRW(myBar, "Cirrus", TW_TYPE_FLOAT, &cirrus_clouds, 
+				"min=0 max=1.0 step=0.05 group=Sky help='dence of Cirrus cloud'");
+	TwAddVarRW(myBar, "Cumulus", TW_TYPE_FLOAT, &cumulus_clouds, 
+				"min=0 max=1.0 step=0.05 group=Sky help='dence of Cumulus cloud'");
+
     TwAddVarRW(myBar, "Sun Speed", TW_TYPE_FLOAT, &sun_speed, 
-               " min=-2000 max=4000.0 step=100 help='Change the speed of sun' group=Sky");
+               " min=-2000 max=4000.0 step=100 help='Change the speed of sun' group=SkyClock");
     TwAddVarRW(myBar, "Cloud Speed", TW_TYPE_FLOAT, &cloud_speed, 
-               " min=0 max=1000.0 step=50 help='Change the speed of cloud' group=Sky");
+               " min=0 max=1000.0 step=50 help='Change the speed of cloud' group=SkyClock");
     TwAddVarRW(myBar, "Sun Time", TW_TYPE_FLOAT, &sun_time, 
-               " min=0 step=0.1 help='Sun Timer' group=Sky");
+               " min=0 step=0.5 help='Sun Timer' group=SkyClock");
     TwAddVarRW(myBar, "Cloud Time", TW_TYPE_FLOAT, &cloud_time, 
-               " min=0 step=0.1 help='Cloud timer' group=Sky");
+               " min=0 step=0.5 help='Cloud timer' group=SkyClock");
 	TwAddButton(myBar, "Exit", My_Exit, NULL, " ");
 }
 
@@ -520,6 +528,8 @@ void My_Display()
   	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
   	glUniform1f(uniforms.sky.sun_time, sun_time);
   	glUniform1f(uniforms.sky.cloud_time, cloud_time);
+  	glUniform1f(uniforms.sky.cirrus, cirrus_clouds);
+  	glUniform1f(uniforms.sky.cumulus, cumulus_clouds);
 	
 	glBindVertexArray(sky.vaos[0]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -548,8 +558,7 @@ void My_Display()
 	}
 
 	// draw GUI
-	if(show_tweakbar)
-		TwDraw();
+	TwDraw();
 
 	glutSwapBuffers();
 }

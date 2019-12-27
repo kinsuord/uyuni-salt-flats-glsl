@@ -63,6 +63,7 @@
       color.rgb = mix(color.rgb, extinction * density * 5.0, min(density, 1.0) * max(pos.y, 0.0));
     }
 
+
     // Dithering Noise
     color.rgb += noise(pos * 1000) * 0.01;
     color.rgb = pow(1.0 - exp(-1.3 * color.rgb), vec3(1.3));
