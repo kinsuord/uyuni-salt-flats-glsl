@@ -1,9 +1,9 @@
   #version 410 core
 
   in vec3 pos;
-  in vec3 fsun;
-  
   layout(location = 0) out vec4 color;
+
+  uniform vec3 fsun;
   uniform float cloud_time = 0.0;
   uniform float cirrus = 0.4;
   uniform float cumulus = 0.8;

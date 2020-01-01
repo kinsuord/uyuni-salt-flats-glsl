@@ -9,7 +9,7 @@ uniform mat4 um4v;
 uniform mat4 um4p;
 uniform mat4 shadow_matrix; 
 //uniform vec3 light_pos = vec3(-31.75, 26.05, -97.72);
-uniform vec3 light_pos = vec3(10.0f, 10.0f, 6.0f);
+uniform vec3 light_pos = vec3(-10.0f, 10.0f, 0.0f);
 
 uniform int mode; // 0:reflection 1:refraction 2:normal
 uniform float water_height = 0.35f;

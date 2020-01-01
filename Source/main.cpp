@@ -69,6 +69,7 @@ struct
 		GLint um4shadow;
 		GLint tex_cubemap;
 		GLint tex_shadow;
+		GLint light_posi;
 
 		GLint Ka;
 		GLint Kd;
@@ -97,7 +98,7 @@ struct
 		GLint um4p;
 		GLint um4v;
 		GLint cloud_time;
-		GLint sun_time;
+		GLint fsun;
 		GLint cirrus;
 		GLint cumulus;
 	}sky;
@@ -410,6 +411,7 @@ void My_Init()
     uniforms.model.um4shadow = glGetUniformLocation(model.program, "shadow_matrix");
     uniforms.model.tex_shadow = glGetUniformLocation(model.program, "tex_shadow");
     uniforms.model.tex_cubemap = glGetUniformLocation(model.program, "tex_cubemap");
+    uniforms.model.light_posi = glGetUniformLocation(model.program, "light_pos");
 
 	uniforms.model.Ka = glGetUniformLocation(model.program, "Ka");
 	uniforms.model.Kd = glGetUniformLocation(model.program, "Kd");
@@ -441,7 +443,7 @@ void My_Init()
 	linkProgram(sky.program, "sky.vs.glsl", "sky.fs.glsl");
 	uniforms.sky.um4p = glGetUniformLocation(sky.program, "P");
 	uniforms.sky.um4v = glGetUniformLocation(sky.program, "V");
-	uniforms.sky.sun_time = glGetUniformLocation(sky.program, "sun_time");
+	uniforms.sky.fsun = glGetUniformLocation(sky.program, "fsun");
 	uniforms.sky.cloud_time = glGetUniformLocation(sky.program, "cloud_time");
 	uniforms.sky.cumulus = glGetUniformLocation(sky.program, "cumulus");
 	uniforms.sky.cirrus = glGetUniformLocation(sky.program, "cirrus");
@@ -589,8 +591,8 @@ void My_Init()
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthmap.tex, 0);
 
 	// ==== setup viewing position and rotation ====
-	view_position = vec3(0.0f, 0.0f, 0.0f);
-	view_direction = normalize(vec3(-2.0f, -1.0f, 0.0f));	
+	view_position = vec3(0.0f, 0.0f, 10.0f);
+	view_direction = normalize(vec3(0.0f, -1.0f, -2.0f));	
 
 	// ==== GUI setup ====
 	TwInit(TW_OPENGL_CORE, NULL);
@@ -619,11 +621,14 @@ void My_Display()
 {
 	// ==== model transform ====
 	mat4 view_matrix = lookAt(view_position, view_position + view_direction, vec3(0.0f, 1.0f, 0.0f));
-	mat4 translation_matrix = translate(mat4(), vec3(-25.0f, -10.0f, 0.0f));
+	mat4 translation_matrix = translate(mat4(), vec3(0.0f, 0.0f, 0.0f));
 	mat4 rotate_matrix = rotate(mat4(), radians(30.0f), vec3(0.0, 1.0, 0.0));
 	mat4 scale_matrix = scale(mat4(), vec3(4.0f, 4.5f, 4.0f));
 	mat4 model_matrix =  translation_matrix * rotate_matrix * scale_matrix;
 	model_matrix = rotate(model_matrix, radians(rotate_angle), vec3(0.0, 1.0, 0.0));
+
+	// sun posi
+	vec3 sun_posi = vec3(0.0, sin(sun_time * 0.01), cos(sun_time * 0.01));
 
 	// ===== draw shadow map pass ====
 	const float shadow_range = 20.0f;
@@ -632,7 +637,8 @@ void My_Display()
 		scale(mat4(), vec3(0.5f, 0.5f, 0.5f));
 	mat4 light_proj_matrix = ortho(-shadow_range, shadow_range, -shadow_range, shadow_range, 0.0f, 200.0f);
 //	mat4 light_view_matrix = lookAt(vec3(-31.75, 26.05, -97.72), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
-	mat4 light_view_matrix = lookAt(vec3(10.0f, 10.0f, 6.0f), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
+	// mat4 light_view_matrix = lookAt(vec3(10.0f, 10.0f, 6.0f), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
+	mat4 light_view_matrix = lookAt(sun_posi*5.0f, vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
 	mat4 light_vp_matrix = light_proj_matrix * light_view_matrix;
 
 	mat4 shadow_sbpv_matrix = scale_bias_matrix * light_vp_matrix;
@@ -660,7 +666,7 @@ void My_Display()
 	glEnable(GL_CLIP_DISTANCE0);
 
 	//==== draw to reflection texture ====
-	float distance = 2.0f * (view_position.y - (water_height - 10.0f));
+	float distance = 2.0f * (view_position.y - (water_height));
 	view_position.y -= distance;
 	view_direction.y = -view_direction.y;
 
@@ -677,7 +683,7 @@ void My_Display()
 	glUseProgram(sky.program);
 	glUniformMatrix4fv(uniforms.sky.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
-	glUniform1f(uniforms.sky.sun_time, sun_time);
+	glUniform3fv(uniforms.sky.fsun, 1, value_ptr(sun_posi));
 	glUniform1f(uniforms.sky.cloud_time, cloud_time);
 	glUniform1f(uniforms.sky.cirrus, cirrus_clouds);
 	glUniform1f(uniforms.sky.cumulus, cumulus_clouds);
@@ -698,6 +704,7 @@ void My_Display()
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
+	// glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi));
 	glUniform1i(uniforms.model.mode, 0);
 	glUniform1f(uniforms.model.water_height, water_height);
 
@@ -798,7 +805,7 @@ void My_Display()
 	glUseProgram(sky.program);
 	glUniformMatrix4fv(uniforms.sky.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
   	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
-  	glUniform1f(uniforms.sky.sun_time, sun_time);
+  	glUniform3fv(uniforms.sky.fsun, 1, value_ptr(sun_posi));
   	glUniform1f(uniforms.sky.cloud_time, cloud_time);
   	glUniform1f(uniforms.sky.cirrus, cirrus_clouds);
   	glUniform1f(uniforms.sky.cumulus, cumulus_clouds);
@@ -806,7 +813,7 @@ void My_Display()
 	glBindVertexArray(sky.vaos[0]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
-
+	
 
 	// draw quad (floor)
 	glUseProgram(quad.program);
@@ -852,6 +859,9 @@ void My_Display()
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi * 10.0f));
+	// vec3 light = vec3(0.0, 10.0, 0.0);
+	// glUniform3fv(uniforms.model.light_posi, 1, value_ptr(light));
 
 	for(int i=0; i<model.vaos.size(); i++)
 	{
