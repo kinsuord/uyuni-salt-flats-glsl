@@ -3,23 +3,27 @@
 layout (location = 0) in vec3 position;                     
 layout (location = 1) in vec2 texcoord;
 
-uniform mat4 um4mvp;
+uniform mat4 um4m;
+uniform mat4 um4v;
+uniform mat4 um4p;
+uniform vec3 cameraPosition;
+uniform vec3 lightPosition;
 
 out vec4 clipSpace;
+out vec2 textureCoords;
+out vec3 toCameraVector;
+out vec3 fromLightVector;
 
-out VS_OUT                                                  
-{                                                           
-    vec2 texcoord;  
-                      
-} vs_out;                                                   
-                                                            
+const float tiling = 0.8f;
                                                             
 void main(void)                                             
-{        
-	clipSpace = um4mvp * vec4(position,1.0);
+{       
+	vec4 worldPosition = um4m *  vec4(position,1.0);
+
+	clipSpace =um4p *um4v * um4m * vec4(position,1.0);
     gl_Position = clipSpace;
-    vs_out.texcoord = texcoord;   
+    textureCoords = texcoord *  tiling ;   
 
-	//vs_out.texcoord = vec2(position.x/2.0 + 0.5, position.y/2.0 + 0.5);
-
+	toCameraVector = cameraPosition - worldPosition.xyz;
+	fromLightVector = worldPosition.xyz - lightPosition;
 }	

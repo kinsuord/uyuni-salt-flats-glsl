@@ -6,6 +6,7 @@
 - [ ] water normal mapping bling phone
 - [ ] GUI 水面高度
 - [ ] GUI 水留速度
+- [ ] water controll gui
 
 ## Probably do
 - [ ] Volumetric clouds
