@@ -18,6 +18,7 @@ typedef struct _Shader
 {
 	GLuint program;
 	GLuint texture;
+	GLuint texture2;
 	vector<GLuint> vaos;
 	vector<int> index_counts;
 
@@ -90,7 +91,12 @@ struct
 		GLint shadow_matrix;
     } quad;
 	struct {
-		GLint um4mvp;
+		GLint um4m;
+		GLint um4v;
+		GLint um4p;
+		GLint moveFactor;
+		GLint cameraPosition;
+		GLint lightPosition;
 	} water;
 	struct
 	{
@@ -174,6 +180,8 @@ float cirrus_clouds = 0.4f;
 
 // water
 float water_height = 0.35f;
+float wave_speed = 0.001f;
+float move_factor = 0.0f;
 
 char** loadShaderSource(const char* file)
 {
@@ -393,7 +401,12 @@ void My_Init()
 	// water
 	water.program = glCreateProgram();
 	linkProgram(water.program, "water.vs.glsl", "water.fs.glsl");
-	uniforms.water.um4mvp = glGetUniformLocation(water.program, "um4mvp");
+	uniforms.water.um4m = glGetUniformLocation(water.program, "um4m");
+	uniforms.water.um4v = glGetUniformLocation(water.program, "um4v");
+	uniforms.water.um4p = glGetUniformLocation(water.program, "um4p");
+	uniforms.water.moveFactor = glGetUniformLocation(water.program, "moveFactor");
+	uniforms.water.cameraPosition = glGetUniformLocation(water.program, "cameraPosition");
+	uniforms.water.lightPosition = glGetUniformLocation(water.program, "lightPosition");
 
 	// skybox
 	skybox.program = glCreateProgram();
@@ -521,13 +534,13 @@ void My_Init()
 	// load water 
 	GLfloat waterVertices[] = {	
 		// Positions                    // Texture
-		-1000.0f, water_height, 1000.0f, 0.0f, 1.0f,
+		-1000.0f, water_height, 1000.0f, 0.0f, 1000.0f,
 		-1000.0f, water_height, -1000.0f, 0.0f, 0.0f,
-		1000.0f, water_height, -1000.0f, 1.0f, 0.0f,
+		1000.0f, water_height, -1000.0f, 1000.0f, 0.0f,
 
-		-1000.0f, water_height, 1000.0f, 0.0f, 1.0f,
-		1000.0f, water_height, -1000.0f, 1.0f, 0.0f,
-		1000.0f, water_height, 1000.0f, 1.0f, 1.0f
+		-1000.0f, water_height, 1000.0f, 0.0f, 1000.0f,
+		1000.0f, water_height, -1000.0f, 1000.0f, 0.0f,
+		1000.0f, water_height, 1000.0f, 1000.0f, 1000.0f
 	};
 	GLuint water_vao, water_vbo;
 	glGenVertexArrays(1, &water_vao);
@@ -542,6 +555,21 @@ void My_Init()
 	glBindVertexArray(0);
 	water.vaos.push_back(water_vao);
 
+	texData = loadImage("waterDUDV.png");
+	glGenTextures(1, &water.texture);
+	glBindTexture(GL_TEXTURE_2D, water.texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texData.width, texData.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texData.data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+	texData = loadImage("normalMap.png");
+	glGenTextures(1, &water.texture2);
+	glBindTexture(GL_TEXTURE_2D, water.texture2);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texData.width, texData.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texData.data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 
 	// load screen
 	GLfloat screenVertices[] = {	// Vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
@@ -830,9 +858,18 @@ void My_Display()
 	glBindTexture(GL_TEXTURE_2D, reflection.tex);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, refraction.tex);
-	glUniformMatrix4fv(uniforms.water.um4mvp, 1, GL_FALSE, value_ptr(proj_matrix * view_matrix* model_matrix));
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, water.texture);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, water.texture2);
 
- 
+	glUniformMatrix4fv(uniforms.water.um4m, 1, GL_FALSE, value_ptr(model_matrix));
+	glUniformMatrix4fv(uniforms.water.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+	glUniformMatrix4fv(uniforms.water.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
+	glUniform1f(uniforms.water.moveFactor, move_factor);
+	glUniform3fv(uniforms.water.cameraPosition, 1, value_ptr(view_position));
+	glUniform3f(uniforms.water.lightPosition, 10.0f, 10.0f, 6.0f);
+
 	glBindVertexArray(water.vaos[0]);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -912,6 +949,11 @@ void My_Timer(int val)
 	time += timer_speed * 0.000001f;
 	sun_time += sun_speed * timer_speed * 0.000001f;
 	cloud_time += cloud_speed * timer_speed * 0.000001f;
+
+	//water
+	move_factor += wave_speed;
+	if(move_factor>=1)  move_factor = 0;
+
 	glutTimerFunc(20, My_Timer, val);
 }
 
