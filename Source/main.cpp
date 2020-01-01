@@ -166,7 +166,7 @@ int width, height;
 
 // track ball
 vec2 mouseXY;
-float camera_speed=1;
+float camera_speed=0.5;
 
 // clock
 float time=0.0f;
@@ -619,7 +619,7 @@ void My_Init()
 	glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, depthmap.tex, 0);
 
 	// ==== setup viewing position and rotation ====
-	view_position = vec3(0.0f, 0.0f, 10.0f);
+	view_position = vec3(0.0f, 10.0f, 30.0f);
 	view_direction = normalize(vec3(0.0f, -1.0f, -2.0f));	
 
 	// ==== GUI setup ====
@@ -875,7 +875,8 @@ void My_Display()
 	glUniformMatrix4fv(uniforms.water.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniform1f(uniforms.water.moveFactor, move_factor);
 	glUniform3fv(uniforms.water.cameraPosition, 1, value_ptr(view_position));
-	glUniform3f(uniforms.water.lightPosition, 10.0f, 10.0f, 6.0f);
+	glUniform3fv(uniforms.water.lightPosition, 1, value_ptr(sun_posi * 20.0f));
+	// glUniform3f(uniforms.water.lightPosition, 10.0f, 10.0f, 6.0f);
 
 	glBindVertexArray(water.vaos[0]);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -1005,13 +1006,13 @@ void My_Keyboard(unsigned char key, int x, int y)
 		printf("Key %c is pressed at (%d, %d)\n", key, x, y);
 
 		switch(key) {
-			case 'q':
-				rotate_angle += 10.0f;
-			break;
+			// case 'q':
+			// 	rotate_angle += 10.0f;
+			// break;
 
-			case 'e':
-				rotate_angle += -10.0f;
-			break;
+			// case 'e':
+			// 	rotate_angle += -10.0f;
+			// break;
 
 			case 'w':
 				view_position += vec3(view_direction.x, 0.0, view_direction.z) * camera_speed;
