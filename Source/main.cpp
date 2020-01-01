@@ -6,12 +6,23 @@ using namespace std;
 
 #define SHADOW_MAP_SIZE 4096
 
+typedef struct _Material
+{
+	vec3 Ka; //ambient
+	vec3 Kd; //diffuse
+	vec3 Ks; //specular
+	float Ns; // shininess
+} Material;
+
 typedef struct _Shader
 {
 	GLuint program;
 	GLuint texture;
 	vector<GLuint> vaos;
 	vector<int> index_counts;
+
+	vector<int> materialId;
+	vector<Material> materials;
 } Shader;
 
 typedef struct _Frame
@@ -58,6 +69,14 @@ struct
 		GLint um4shadow;
 		GLint tex_cubemap;
 		GLint tex_shadow;
+
+		GLint Ka;
+		GLint Kd;
+		GLint Ks;
+		GLint Ns;
+
+		GLint mode;
+		GLint water_height;
     } model;
     struct
     {
@@ -70,6 +89,9 @@ struct
 		GLint drawshadow;
 		GLint shadow_matrix;
     } quad;
+	struct {
+		GLint um4mvp;
+	} water;
 	struct
 	{
 		GLint um4p;
@@ -113,6 +135,8 @@ void My_MouseMove(int x,int y);
 void My_MouseWheel(int button, int dir, int x, int y);
 
 // shader program
+Shader screen;
+Shader water;
 Shader skybox;
 Shader model;
 Shader quad;
@@ -120,6 +144,8 @@ Shader depth;
 Shader window;
 Shader sky;
 Frame depthmap;
+Frame reflection;
+Frame refraction;
 
 // clock
 unsigned int timer_speed = 20;
@@ -139,12 +165,15 @@ float camera_speed=1;
 float time=0.0f;
 
 // sky
-float sun_time = 0.0f;
-float sun_speed=300.0f;
+float sun_time = 100.0f;
+float sun_speed=500.0f;
 float cloud_time = 0.0f;
-float cloud_speed=200.0f;
+float cloud_speed=300.0f;
 float cumulus_clouds = 0.6f;
 float cirrus_clouds = 0.4f;
+
+// water
+float water_height = 0.35f;
 
 char** loadShaderSource(const char* file)
 {
@@ -171,7 +200,7 @@ void loadModel()
 	vector<tinyobj::shape_t> shapes;
 	vector<tinyobj::material_t> materials;
 	string err;
-	bool ret = tinyobj::LoadObj(shapes, materials, err, "nanosuit.obj");
+	bool ret = tinyobj::LoadObj(shapes, materials, err, "piano.obj");
 	if(err.size()>0)
 	{
 		printf("Load Models Fail! Please check the solution path");
@@ -200,23 +229,29 @@ void loadModel()
 				shapes[i].mesh.positions.size() * sizeof(float), 
 				&shapes[i].mesh.positions[0]);
 		// texcoord
-		glBufferSubData(GL_ARRAY_BUFFER, 
-				shapes[i].mesh.positions.size() * sizeof(float), 
-				shapes[i].mesh.texcoords.size() * sizeof(float), 
-				&shapes[i].mesh.texcoords[0]);
+//		glBufferSubData(GL_ARRAY_BUFFER, 
+//				shapes[i].mesh.positions.size() * sizeof(float), 
+//				shapes[i].mesh.texcoords.size() * sizeof(float), 
+//				&shapes[i].mesh.texcoords[0]);
 
 		// normal
+//		glBufferSubData(GL_ARRAY_BUFFER, 
+//				shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float), 
+//				shapes[i].mesh.normals.size() * sizeof(float), 
+//				&shapes[i].mesh.normals[0]);
 		glBufferSubData(GL_ARRAY_BUFFER, 
-				shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float), 
+				shapes[i].mesh.positions.size() * sizeof(float) , 
 				shapes[i].mesh.normals.size() * sizeof(float), 
 				&shapes[i].mesh.normals[0]);
 
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float)));
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float)));
-	
+//		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float)));
+//		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *)(shapes[i].mesh.positions.size() * sizeof(float)));
+
+
 		glEnableVertexAttribArray(0);
-		glEnableVertexAttribArray(1);
+		//glEnableVertexAttribArray(1);
 		glEnableVertexAttribArray(2);
 
 		glGenBuffers(1, &ebo);
@@ -224,7 +259,20 @@ void loadModel()
 		glBufferData(GL_ELEMENT_ARRAY_BUFFER, shapes[i].mesh.indices.size() * sizeof(unsigned int), shapes[i].mesh.indices.data(), GL_STATIC_DRAW);
 
 		model.vaos.push_back(vao);		
-		model.index_counts.push_back(shapes[i].mesh.indices.size());		
+		model.index_counts.push_back(shapes[i].mesh.indices.size());	
+
+		model.materialId.push_back(shapes[i].mesh.material_ids[0]);
+	}
+
+	for (int i = 0; i < materials.size(); i++) {
+
+		Material _materail;
+		_materail.Ka = vec3(materials[i].ambient[0], materials[i].ambient[1], materials[i].ambient[2]);
+		_materail.Kd = vec3(materials[i].diffuse[0], materials[i].diffuse[1], materials[i].diffuse[2]);
+		_materail.Ks = vec3(materials[i].specular[0], materials[i].specular[1], materials[i].specular[2]);
+		_materail.Ns = materials[i].shininess;
+
+		model.materials.push_back(_materail);
 	}
 }
 
@@ -337,6 +385,16 @@ void My_Init()
     glDepthFunc(GL_LEQUAL);
 
 	// ==== link shader ====
+
+	// screen
+	screen.program = glCreateProgram();
+	linkProgram(screen.program, "screen.vs.glsl", "screen.fs.glsl");
+
+	// water
+	water.program = glCreateProgram();
+	linkProgram(water.program, "water.vs.glsl", "water.fs.glsl");
+	uniforms.water.um4mvp = glGetUniformLocation(water.program, "um4mvp");
+
 	// skybox
 	skybox.program = glCreateProgram();
 	linkProgram(skybox.program, "skybox.vs.glsl", "skybox.fs.glsl");
@@ -352,6 +410,14 @@ void My_Init()
     uniforms.model.um4shadow = glGetUniformLocation(model.program, "shadow_matrix");
     uniforms.model.tex_shadow = glGetUniformLocation(model.program, "tex_shadow");
     uniforms.model.tex_cubemap = glGetUniformLocation(model.program, "tex_cubemap");
+
+	uniforms.model.Ka = glGetUniformLocation(model.program, "Ka");
+	uniforms.model.Kd = glGetUniformLocation(model.program, "Kd");
+	uniforms.model.Ks = glGetUniformLocation(model.program, "Ks");
+	uniforms.model.Ns = glGetUniformLocation(model.program, "Ns");
+
+	uniforms.model.mode = glGetUniformLocation(model.program, "mode");
+	uniforms.model.water_height = glGetUniformLocation(model.program, "water_height");
 
 	// quad
 	quad.program = glCreateProgram();
@@ -419,6 +485,92 @@ void My_Init()
     glGenVertexArrays(1, &sky.vaos[0]);
 	glBindVertexArray(sky.vaos[0]);
 
+	// load quad
+	GLfloat quadVertices[] = {
+	// Positions             // Texture
+	-1000.0f, 0.0f, 1000.0f, 0.0f, 100.0f,
+	-1000.0f, 0.0f, -1000.0f, 0.0f, 0.0f,
+	1000.0f, 0.0f, -1000.0f, 100.0f, 0.0f,
+
+	-1000.0f, 0.0f, 1000.0f, 0.0f, 100.0f,
+	1000.0f, 0.0f, -1000.0f, 100.0f, 0.0f,
+	1000.0f, 0.0f, 1000.0f, 100.0f, 100.0f
+	};
+	GLuint quad_vao ,quad_vbo;
+	glGenVertexArrays(1, &quad_vao);
+	glGenBuffers(1, &quad_vbo);
+	glBindVertexArray(quad_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, quad_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glBindVertexArray(0);
+	quad.vaos.push_back(quad_vao);
+
+	TextureData texData = loadImage("quad_texture.png");
+
+	glGenTextures(1, &quad.texture);
+	glBindTexture(GL_TEXTURE_2D, quad.texture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, texData.width, texData.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, texData.data);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+	// load water 
+	GLfloat waterVertices[] = {	
+		// Positions                    // Texture
+		-1000.0f, water_height, 1000.0f, 0.0f, 1.0f,
+		-1000.0f, water_height, -1000.0f, 0.0f, 0.0f,
+		1000.0f, water_height, -1000.0f, 1.0f, 0.0f,
+
+		-1000.0f, water_height, 1000.0f, 0.0f, 1.0f,
+		1000.0f, water_height, -1000.0f, 1.0f, 0.0f,
+		1000.0f, water_height, 1000.0f, 1.0f, 1.0f
+	};
+	GLuint water_vao, water_vbo;
+	glGenVertexArrays(1, &water_vao);
+	glGenBuffers(1, &water_vbo);
+	glBindVertexArray(water_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, water_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), &waterVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)0);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GLfloat)));
+	glBindVertexArray(0);
+	water.vaos.push_back(water_vao);
+
+
+	// load screen
+	GLfloat screenVertices[] = {	// Vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+	// Positions   // TexCoords
+	-1.0f,  1.0f,  0.0f, 1.0f,
+	-1.0f, -1.0f,  0.0f, 0.0f,
+	 1.0f, -1.0f,  1.0f, 0.0f,
+
+	-1.0f,  1.0f,  0.0f, 1.0f,
+	 1.0f, -1.0f,  1.0f, 0.0f,
+	 1.0f,  1.0f,  1.0f, 1.0f
+	};
+	GLuint screen_vao, screen_vbo;
+	glGenVertexArrays(1, &screen_vao);
+	glGenBuffers(1, &screen_vbo);
+	glBindVertexArray(screen_vao);
+	glBindBuffer(GL_ARRAY_BUFFER, screen_vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(screenVertices), &screenVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (GLvoid*)(2 * sizeof(GLfloat)));
+	glBindVertexArray(0);
+	screen.vaos.push_back(screen_vao);
+
+	// refletion & refraction frameobject
+	glGenFramebuffers(1, &reflection.fbo);
+	glGenFramebuffers(1, &refraction.fbo);
+
 	// shadow frameobject
 	glGenFramebuffers(1, &depthmap.fbo);
 
@@ -428,6 +580,8 @@ void My_Init()
     glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE, 0,  GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_FUNC, GL_LEQUAL);
 
@@ -436,7 +590,7 @@ void My_Init()
 
 	// ==== setup viewing position and rotation ====
 	view_position = vec3(0.0f, 0.0f, 0.0f);
-	view_direction = normalize(vec3(-1.0f, -1.0f, 0.0f));	
+	view_direction = normalize(vec3(-2.0f, -1.0f, 0.0f));	
 
 	// ==== GUI setup ====
 	TwInit(TW_OPENGL_CORE, NULL);
@@ -465,9 +619,10 @@ void My_Display()
 {
 	// ==== model transform ====
 	mat4 view_matrix = lookAt(view_position, view_position + view_direction, vec3(0.0f, 1.0f, 0.0f));
-	mat4 translation_matrix = translate(mat4(), vec3(-10, -13, -8));
-	mat4 scale_matrix = scale(mat4(), vec3(0.5f, 0.35f, 0.5f));
-	mat4 model_matrix = translation_matrix * scale_matrix;
+	mat4 translation_matrix = translate(mat4(), vec3(-25.0f, -10.0f, 0.0f));
+	mat4 rotate_matrix = rotate(mat4(), radians(30.0f), vec3(0.0, 1.0, 0.0));
+	mat4 scale_matrix = scale(mat4(), vec3(4.0f, 4.5f, 4.0f));
+	mat4 model_matrix =  translation_matrix * rotate_matrix * scale_matrix;
 	model_matrix = rotate(model_matrix, radians(rotate_angle), vec3(0.0, 1.0, 0.0));
 
 	// ===== draw shadow map pass ====
@@ -475,11 +630,13 @@ void My_Display()
 	mat4 scale_bias_matrix = 
 		translate(mat4(), vec3(0.5f, 0.5f, 0.5f)) *
 		scale(mat4(), vec3(0.5f, 0.5f, 0.5f));
-	mat4 light_proj_matrix = ortho(-shadow_range, shadow_range, -shadow_range, shadow_range, 0.0f, 150.0f);
-	mat4 light_view_matrix = lookAt(vec3(-31.75, 26.05, -97.72), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
+	mat4 light_proj_matrix = ortho(-shadow_range, shadow_range, -shadow_range, shadow_range, 0.0f, 200.0f);
+//	mat4 light_view_matrix = lookAt(vec3(-31.75, 26.05, -97.72), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
+	mat4 light_view_matrix = lookAt(vec3(10.0f, 10.0f, 6.0f), vec3(0, 0, 0), vec3(0.0f, 1.0f, 0.0f));
 	mat4 light_vp_matrix = light_proj_matrix * light_view_matrix;
 
 	mat4 shadow_sbpv_matrix = scale_bias_matrix * light_vp_matrix;
+	mat4 shadow_matrix = shadow_sbpv_matrix * model_matrix;
 
 	glUseProgram(depth.program);
 	glBindFramebuffer(GL_FRAMEBUFFER, depthmap.fbo);
@@ -495,14 +652,129 @@ void My_Display()
 		glBindVertexArray(model.vaos[i]);
 		glDrawElements(GL_TRIANGLES, model.index_counts[i], GL_UNSIGNED_INT, 0);
 	}
+	glDisable(GL_POLYGON_OFFSET_FILL);
+
+	static const GLfloat gray[] = { 0.2f, 0.2f, 0.2f, 1.0f };
+	static const GLfloat ones[] = { 1.0f };
+	
+	glEnable(GL_CLIP_DISTANCE0);
+
+	//==== draw to reflection texture ====
+	float distance = 2.0f * (view_position.y - (water_height - 10.0f));
+	view_position.y -= distance;
+	view_direction.y = -view_direction.y;
+
+
+	view_matrix = lookAt(view_position, view_position + view_direction, vec3(0.0f, 1.0f, 0.0f));
+
+	glBindFramebuffer(GL_FRAMEBUFFER, reflection.fbo);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glViewport(0, 0, width, height);
+	glClearBufferfv(GL_COLOR, 0, gray);
+	glClearBufferfv(GL_DEPTH, 0, ones);
+
+	// draw sky
+	glUseProgram(sky.program);
+	glUniformMatrix4fv(uniforms.sky.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
+	glUniformMatrix4fv(uniforms.sky.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+	glUniform1f(uniforms.sky.sun_time, sun_time);
+	glUniform1f(uniforms.sky.cloud_time, cloud_time);
+	glUniform1f(uniforms.sky.cirrus, cirrus_clouds);
+	glUniform1f(uniforms.sky.cumulus, cumulus_clouds);
+
+	glBindVertexArray(sky.vaos[0]);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	// draw model
+	glUseProgram(model.program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
+	glUniform1i(uniforms.model.tex_cubemap, 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
+	glUniform1i(uniforms.model.tex_shadow, 1);
+
+	glUniformMatrix4fv(uniforms.model.um4m, 1, GL_FALSE, value_ptr(model_matrix));
+	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
+	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform1i(uniforms.model.mode, 0);
+	glUniform1f(uniforms.model.water_height, water_height);
+
+	for (int i = 0; i < model.vaos.size(); i++)
+	{
+		//material
+		int mid = model.materialId[i];
+		glUniform3fv(uniforms.model.Ka, 1, value_ptr(model.materials[mid].Ka));
+		glUniform3fv(uniforms.model.Kd, 1, value_ptr(model.materials[mid].Kd));
+		glUniform3fv(uniforms.model.Ks, 1, value_ptr(model.materials[mid].Ks));
+		glUniform1f(uniforms.model.Ns, model.materials[mid].Ns);
+
+		glBindVertexArray(model.vaos[i]);
+		glDrawElements(GL_TRIANGLES, model.index_counts[i], GL_UNSIGNED_INT, 0);
+	}
+
+	view_position.y += distance;
+	view_direction.y = -view_direction.y;
+	view_matrix = lookAt(view_position, view_position + view_direction, vec3(0.0f, 1.0f, 0.0f));
+	
+	//===== draw to refraction texture ====
+	glBindFramebuffer(GL_FRAMEBUFFER, refraction.fbo);
+	glDrawBuffer(GL_COLOR_ATTACHMENT0);
+	glViewport(0, 0, width, height);
+
+	glClearBufferfv(GL_COLOR, 0, gray);
+	glClearBufferfv(GL_DEPTH, 0, ones);
+	// draw quad (floor)
+	glUseProgram(quad.program);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, quad.texture);
+
+	glUniformMatrix4fv(uniforms.quad.um4mvp, 1, GL_FALSE, value_ptr(proj_matrix * view_matrix* model_matrix));
+	glUniform1i(uniforms.quad.drawshadow, 1);
+	glUniformMatrix4fv(uniforms.quad.shadow_matrix, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform1i(uniforms.quad.tex_shadow, 0);
+
+	glBindVertexArray(quad.vaos[0]);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	// draw model
+	glUseProgram(model.program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox.texture);
+	glUniform1i(uniforms.model.tex_cubemap, 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
+	glUniform1i(uniforms.model.tex_shadow, 1);
+
+	glUniformMatrix4fv(uniforms.model.um4m, 1, GL_FALSE, value_ptr(model_matrix));
+	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
+	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
+	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform1i(uniforms.model.mode, 1);
+	glUniform1f(uniforms.model.water_height, water_height);
+
+	for (int i = 0; i < model.vaos.size(); i++){
+		//material
+		int mid = model.materialId[i];
+		glUniform3fv(uniforms.model.Ka, 1, value_ptr(model.materials[mid].Ka));
+		glUniform3fv(uniforms.model.Kd, 1, value_ptr(model.materials[mid].Kd));
+		glUniform3fv(uniforms.model.Ks, 1, value_ptr(model.materials[mid].Ks));
+		glUniform1f(uniforms.model.Ns, model.materials[mid].Ns);
+
+		glBindVertexArray(model.vaos[i]);
+		glDrawElements(GL_TRIANGLES, model.index_counts[i], GL_UNSIGNED_INT, 0);
+	}
+
+	glDisable(GL_CLIP_DISTANCE0);
 
 	//===== draw to frame ====
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glDrawBuffer( GL_COLOR_ATTACHMENT0 );
 	glViewport(0, 0, width, height);
 
-	static const GLfloat gray[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-	static const GLfloat ones[] = { 1.0f };
 	glClearBufferfv(GL_COLOR, 0, gray);
 	glClearBufferfv(GL_DEPTH, 0, ones);
 
@@ -519,7 +791,7 @@ void My_Display()
 	glUniform3fv(uniforms.skybox.eye, 1, &eye[0]);
 
 	glDisable(GL_DEPTH_TEST);
-	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+//	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	glEnable(GL_DEPTH_TEST);
 
 	// draw sky
@@ -534,9 +806,39 @@ void My_Display()
 	glBindVertexArray(sky.vaos[0]);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 
+
+
+	// draw quad (floor)
+	glUseProgram(quad.program);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, depthmap.tex);	
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, quad.texture);
+
+	glUniformMatrix4fv(uniforms.quad.um4mvp, 1, GL_FALSE, value_ptr(proj_matrix * view_matrix* model_matrix));
+	glUniform1i(uniforms.quad.drawshadow, 1);
+	glUniformMatrix4fv(uniforms.quad.shadow_matrix, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform1i(uniforms.quad.tex_shadow, 0);
+
+	glBindVertexArray(quad.vaos[0]);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+	// draw water
+	glUseProgram(water.program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, reflection.tex);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, refraction.tex);
+	glUniformMatrix4fv(uniforms.water.um4mvp, 1, GL_FALSE, value_ptr(proj_matrix * view_matrix* model_matrix));
+
+ 
+	glBindVertexArray(water.vaos[0]);
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+
+
 	// draw model
-	mat4 shadow_matrix = shadow_sbpv_matrix * model_matrix;
-	
 	glUseProgram(model.program);
 
 	glActiveTexture(GL_TEXTURE0);
@@ -550,16 +852,39 @@ void My_Display()
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
-	
+
 	for(int i=0; i<model.vaos.size(); i++)
 	{
+		//material
+		int mid = model.materialId[i];
+		glUniform3fv(uniforms.model.Ka, 1, value_ptr(model.materials[mid].Ka));
+		glUniform3fv(uniforms.model.Kd, 1, value_ptr(model.materials[mid].Kd));
+		glUniform3fv(uniforms.model.Ks, 1, value_ptr(model.materials[mid].Ks));
+		glUniform1f(uniforms.model.Ns, model.materials[mid].Ns);
+
 		glBindVertexArray(model.vaos[i]);
 		glDrawElements(GL_TRIANGLES, model.index_counts[i], GL_UNSIGNED_INT, 0);
 	}
-
+	
 	// draw GUI
 	TwDraw();
+	/*
+	 // draw on screen //
+	{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // white
+	glClear(GL_COLOR_BUFFER_BIT);
+	glUseProgram(screen.program);
+	glBindVertexArray(screen.vaos[0]);
 
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, reflection.tex);
+
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+	glBindVertexArray(0);
+	glUseProgram(0);
+	}
+	*/
 	glutSwapBuffers();
 }
 
@@ -571,6 +896,9 @@ void My_Reshape(int w, int h)
 	float viewportAspect = (float)width / (float)height;
 	proj_matrix = perspective(radians(80.0f), viewportAspect, 0.1f, 1000.0f);
 	TwWindowSize(width, height);
+
+	bindFrameToTex(reflection);
+	bindFrameToTex(refraction);
 }
 
 void TW_CALL My_Exit(void *)
@@ -685,7 +1013,7 @@ int main(int argc, char *argv[])
 #else
     glutInitDisplayMode(GLUT_3_2_CORE_PROFILE | GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
 #endif
-	glutInitWindowPosition(100, 100);
+	glutInitWindowPosition(0, 0);
 	glutInitWindowSize(1400, 900);
 	glutCreateWindow("Final"); // You cannot use OpenGL functions before this line; The OpenGL context must be created first by glutCreateWindow()!
 #ifdef _MSC_VER

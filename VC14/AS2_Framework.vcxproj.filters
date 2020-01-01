@@ -7,5 +7,21 @@
   <ItemGroup>
     <None Include="..\Assets\fragment.fs.glsl" />
     <None Include="..\Assets\vertex.vs.glsl" />
+    <None Include="..\Assets\depth.fs.glsl" />
+    <None Include="..\Assets\depth.vs.glsl" />
+    <None Include="..\Assets\differential.fs.glsl" />
+    <None Include="..\Assets\differential.vs.glsl" />
+    <None Include="..\Assets\model.fs.glsl" />
+    <None Include="..\Assets\model.vs.glsl" />
+    <None Include="..\Assets\quad.fs.glsl" />
+    <None Include="..\Assets\quad.vs.glsl" />
+    <None Include="..\Assets\sky.fs.glsl" />
+    <None Include="..\Assets\sky.vs.glsl" />
+    <None Include="..\Assets\skybox.fs.glsl" />
+    <None Include="..\Assets\skybox.vs.glsl" />
+    <None Include="..\Assets\water.fs.glsl" />
+    <None Include="..\Assets\water.vs.glsl" />
+    <None Include="..\Assets\screen.fs.glsl" />
+    <None Include="..\Assets\screen.vs.glsl" />
   </ItemGroup>
 </Project>

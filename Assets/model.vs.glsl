@@ -8,7 +8,11 @@ uniform mat4 um4m;
 uniform mat4 um4v;
 uniform mat4 um4p;
 uniform mat4 shadow_matrix; 
-uniform vec3 light_pos = vec3(-31.75, 26.05, -97.72);
+//uniform vec3 light_pos = vec3(-31.75, 26.05, -97.72);
+uniform vec3 light_pos = vec3(10.0f, 10.0f, 6.0f);
+
+uniform int mode; // 0:reflection 1:refraction 2:normal
+uniform float water_height = 0.35f;
 
 out VertexData
 {
@@ -21,10 +25,27 @@ out VertexData
     vec4 shadow_coord;
 } vertexData;
 
+//vec4 plane = vec4(0.0f, -1.0f, 0.0f, 0.35f);
+
 void main()
 {
+
+	vec4 plane = vec4(0.0f, 1.0f, 0.0f, -10000);
+
+	if(mode==0){ 
+		//reflection
+		plane = vec4(0.0f, 1.0f, 0.0f, -water_height);		
+	}
+	else if (mode==1){
+		//refraction
+		plane = vec4(0.0f, -1.0f, 0.0f, water_height);
+	}
+	
+	gl_ClipDistance[0] = dot(vec4(iv3vertex, 1.0),plane);
+
     mat4 um4mv = um4v * um4m;
 	gl_Position = um4p * um4mv * vec4(iv3vertex, 1.0);
+
     vertexData.texcoord = iv2tex_coord;
     vertexData.N = mat3(um4mv) * iv3normal;
     vertexData.L = (um4v * vec4(light_pos, 1.0)).xyz - (um4mv * vec4(iv3vertex, 1.0)).xyz;

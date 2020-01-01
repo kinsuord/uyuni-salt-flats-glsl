@@ -1,3 +1,6 @@
 VC14/Debug*
 VC14/.vs*
 VC14/AS2_Framework.VC.db
+*.db
+VC14/Release
+.vs

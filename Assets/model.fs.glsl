@@ -5,9 +5,14 @@ layout(location = 0) out vec4 fragColor;
 uniform samplerCube tex_cubemap;
 uniform sampler2DShadow tex_shadow;
 
-uniform vec3 diffuse_albedo = vec3(0.35);
-uniform vec3 specular_albedo = vec3(0.7);         
-uniform float specular_power = 200.0;  
+//uniform vec3 diffuse_albedo = vec3(0.35);
+//uniform vec3 specular_albedo = vec3(0.7);         
+//uniform float specular_power = 200.0;
+
+uniform vec3 Ka; //ambient_albedo
+uniform vec3 Kd; //diffuse_albedo
+uniform vec3 Ks; //specular_albedo
+uniform float Ns; //specular_power
 
 in VertexData
 {
@@ -28,14 +33,16 @@ void main()
     vec3 V = normalize(vertexData.V);                                               
     vec3 H = normalize(L + V);                                                 
                                                                                
-    // Compute the diffuse and specular components for each fragment           
-    vec3 diffuse = max(dot(N, L), 0.0) * diffuse_albedo;                       
-    vec3 specular = pow(max(dot(N, H), 0.0), specular_power) * specular_albedo;
-                                                                               
+    // Compute the diffuse and specular components for each fragment          
+	vec3 ambient = 0.1f * Ka;
+    vec3 diffuse = 2.0f * max(dot(N, L), 0.0) * Kd;
+    vec3 specular = pow(max(dot(N, H), 0.0), Ns) * Ks;
+                                                                           
     // Write final color to the framebuffer
     float shadow_factor = textureProj(tex_shadow, vertexData.shadow_coord);
 
-    vec4 blinn_phone_color = vec4(diffuse + specular, 1.0);
+    vec4 blinn_phone_color = vec4(ambient + diffuse + specular, 1.0);
+
     // fragColor = blinn_phone_color;
     // fragColor = vec4(shadow_factor);
 

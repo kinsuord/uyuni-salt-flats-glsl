@@ -1,6 +1,6 @@
 #version 410 core                                           
                                                             
-layout (location = 0) in vec2 position;                     
+layout (location = 0) in vec3 position;                     
 layout (location = 1) in vec2 texcoord;
 
 uniform mat4 um4mvp;
@@ -15,7 +15,7 @@ out VS_OUT
                                                             
 void main(void)                                             
 {                                                           
-    gl_Position = um4mvp * vec4(position.x,0.0,position.y,1.0);
+    gl_Position = um4mvp * vec4(position,1.0);
     vs_out.texcoord = texcoord;   
-    vs_out.shadow_coord = shadow_matrix * vec4(position.x,0.0,position.y,1.0);                          
+    vs_out.shadow_coord = shadow_matrix * vec4(position,1.0);                          
 }	

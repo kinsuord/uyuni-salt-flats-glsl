@@ -44,8 +44,8 @@
 
   void main()
   {
-    if (pos.y < 0)
-      discard;
+    //if (pos.y < 0)
+    //  discard;
 
     // Atmosphere Scattering
     float mu = dot(normalize(pos), normalize(fsun));
