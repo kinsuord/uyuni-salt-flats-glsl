@@ -23,6 +23,7 @@ typedef struct _Shader
 	vector<int> index_counts;
 
 	vector<int> materialId;
+	vector<int> has_texs;
 	vector<Material> materials;
 } Shader;
 
@@ -70,6 +71,8 @@ struct
 		GLint um4shadow;
 		GLint tex_cubemap;
 		GLint tex_shadow;
+		GLint tex;
+		GLint normal_map;
 		GLint light_posi;
 
 		GLint Ka;
@@ -77,6 +80,7 @@ struct
 		GLint Ks;
 		GLint Ns;
 
+		GLint enable_tex;
 		GLint mode;
 		GLint water_height;
     } model;
@@ -180,7 +184,7 @@ float cumulus_clouds = 0.6f;
 float cirrus_clouds = 0.4f;
 
 // water
-float water_height = 0.35f;
+float water_height = 0.1f;
 float wave_speed = 0.001f;
 float move_factor = 0.0f;
 
@@ -209,7 +213,7 @@ void loadModel()
 	vector<tinyobj::shape_t> shapes;
 	vector<tinyobj::material_t> materials;
 	string err;
-	bool ret = tinyobj::LoadObj(shapes, materials, err, "piano.obj");
+	bool ret = tinyobj::LoadObj(shapes, materials, err, "piano_uv.obj");
 	if(err.size()>0)
 	{
 		printf("Load Models Fail! Please check the solution path");
@@ -237,30 +241,39 @@ void loadModel()
 		glBufferSubData(GL_ARRAY_BUFFER, 0, 
 				shapes[i].mesh.positions.size() * sizeof(float), 
 				&shapes[i].mesh.positions[0]);
-		// texcoord
-//		glBufferSubData(GL_ARRAY_BUFFER, 
-//				shapes[i].mesh.positions.size() * sizeof(float), 
-//				shapes[i].mesh.texcoords.size() * sizeof(float), 
-//				&shapes[i].mesh.texcoords[0]);
+		// // texcoord
+		if(shapes[i].mesh.texcoords.size() > 0)
+		{
+			glBufferSubData(GL_ARRAY_BUFFER, 
+					shapes[i].mesh.positions.size() * sizeof(float), 
+					shapes[i].mesh.texcoords.size() * sizeof(float), 
+					&shapes[i].mesh.texcoords[0]);
+			model.has_texs.push_back(1);
+		}
+		else
+		{
+			model.has_texs.push_back(0);
+		}
+
 
 		// normal
-//		glBufferSubData(GL_ARRAY_BUFFER, 
-//				shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float), 
-//				shapes[i].mesh.normals.size() * sizeof(float), 
-//				&shapes[i].mesh.normals[0]);
 		glBufferSubData(GL_ARRAY_BUFFER, 
-				shapes[i].mesh.positions.size() * sizeof(float) , 
+				shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float), 
 				shapes[i].mesh.normals.size() * sizeof(float), 
 				&shapes[i].mesh.normals[0]);
+		// glBufferSubData(GL_ARRAY_BUFFER, 
+		// 		shapes[i].mesh.positions.size() * sizeof(float) , 
+		// 		shapes[i].mesh.normals.size() * sizeof(float), 
+		// 		&shapes[i].mesh.normals[0]);
 
 		glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-//		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float)));
-//		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float)));
-		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *)(shapes[i].mesh.positions.size() * sizeof(float)));
+		glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float)));
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *) (shapes[i].mesh.positions.size() * sizeof(float) + shapes[i].mesh.texcoords.size() * sizeof(float)));
+		// glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 0, (void *)(shapes[i].mesh.positions.size() * sizeof(float)));
 
 
 		glEnableVertexAttribArray(0);
-		//glEnableVertexAttribArray(1);
+		glEnableVertexAttribArray(1);
 		glEnableVertexAttribArray(2);
 
 		glGenBuffers(1, &ebo);
@@ -283,6 +296,27 @@ void loadModel()
 
 		model.materials.push_back(_materail);
 	}
+
+	TextureData tData = loadImage("Wood30_col.jpg");
+	glGenTextures( 1, &model.texture);
+	glBindTexture( GL_TEXTURE_2D, model.texture);
+
+	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, tData.width, tData.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, tData.data);
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+
+	tData = loadImage("Wood30_nrm.jpg");
+	glGenTextures( 1, &model.texture2);
+	glBindTexture( GL_TEXTURE_2D, model.texture2);
+
+	glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, tData.width, tData.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, tData.data);
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR );
+
 }
 
 // load a png image and return a TextureData structure with raw data
@@ -424,6 +458,8 @@ void My_Init()
     uniforms.model.um4shadow = glGetUniformLocation(model.program, "shadow_matrix");
     uniforms.model.tex_shadow = glGetUniformLocation(model.program, "tex_shadow");
     uniforms.model.tex_cubemap = glGetUniformLocation(model.program, "tex_cubemap");
+    uniforms.model.tex = glGetUniformLocation(model.program, "tex");
+    uniforms.model.normal_map = glGetUniformLocation(model.program, "normal_map");
     uniforms.model.light_posi = glGetUniformLocation(model.program, "light_pos");
 
 	uniforms.model.Ka = glGetUniformLocation(model.program, "Ka");
@@ -432,6 +468,7 @@ void My_Init()
 	uniforms.model.Ns = glGetUniformLocation(model.program, "Ns");
 
 	uniforms.model.mode = glGetUniformLocation(model.program, "mode");
+	uniforms.model.enable_tex = glGetUniformLocation(model.program, "enable_tex");
 	uniforms.model.water_height = glGetUniformLocation(model.program, "water_height");
 
 	// quad
@@ -727,12 +764,16 @@ void My_Display()
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
 	glUniform1i(uniforms.model.tex_shadow, 1);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, model.texture);
+	glUniform1i(uniforms.model.tex, 2);
 
 	glUniformMatrix4fv(uniforms.model.um4m, 1, GL_FALSE, value_ptr(model_matrix));
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
-	// glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi));
+	glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi * 100.0f));
+
 	glUniform1i(uniforms.model.mode, 0);
 	glUniform1f(uniforms.model.water_height, water_height);
 
@@ -783,11 +824,15 @@ void My_Display()
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
 	glUniform1i(uniforms.model.tex_shadow, 1);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, model.texture);
+	glUniform1i(uniforms.model.tex, 2);
 
 	glUniformMatrix4fv(uniforms.model.um4m, 1, GL_FALSE, value_ptr(model_matrix));
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
+	glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi * 100.0f));
 	glUniform1i(uniforms.model.mode, 1);
 	glUniform1f(uniforms.model.water_height, water_height);
 
@@ -875,8 +920,7 @@ void My_Display()
 	glUniformMatrix4fv(uniforms.water.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniform1f(uniforms.water.moveFactor, move_factor);
 	glUniform3fv(uniforms.water.cameraPosition, 1, value_ptr(view_position));
-	glUniform3fv(uniforms.water.lightPosition, 1, value_ptr(sun_posi * 20.0f));
-	// glUniform3f(uniforms.water.lightPosition, 10.0f, 10.0f, 6.0f);
+	glUniform3fv(uniforms.water.lightPosition, 1, value_ptr(sun_posi * 1000.0f));
 
 	glBindVertexArray(water.vaos[0]);
 	glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -892,19 +936,24 @@ void My_Display()
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, depthmap.tex);
 	glUniform1i(uniforms.model.tex_shadow, 1);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, model.texture);
+	glUniform1i(uniforms.model.tex, 2);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, model.texture2);
+	glUniform1i(uniforms.model.normal_map, 3);
 
 	glUniformMatrix4fv(uniforms.model.um4m, 1, GL_FALSE, value_ptr(model_matrix));
 	glUniformMatrix4fv(uniforms.model.um4v, 1, GL_FALSE, value_ptr(view_matrix));
 	glUniformMatrix4fv(uniforms.model.um4p, 1, GL_FALSE, value_ptr(proj_matrix));
 	glUniformMatrix4fv(uniforms.model.um4shadow, 1, GL_FALSE, value_ptr(shadow_matrix));
-	glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi * 10.0f));
-	// vec3 light = vec3(0.0, 10.0, 0.0);
-	// glUniform3fv(uniforms.model.light_posi, 1, value_ptr(light));
+	glUniform3fv(uniforms.model.light_posi, 1, value_ptr(sun_posi * 20.0f));
 
 	for(int i=0; i<model.vaos.size(); i++)
 	{
 		//material
 		int mid = model.materialId[i];
+		glUniform1i(uniforms.model.enable_tex, model.has_texs[i]);
 		glUniform3fv(uniforms.model.Ka, 1, value_ptr(model.materials[mid].Ka));
 		glUniform3fv(uniforms.model.Kd, 1, value_ptr(model.materials[mid].Kd));
 		glUniform3fv(uniforms.model.Ks, 1, value_ptr(model.materials[mid].Ks));
