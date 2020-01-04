@@ -17,7 +17,7 @@ uniform vec3 cameraPosition;
 uniform vec3 lightColor = vec3(1.0f, 1.0f, 1.0f);
 
 const float waveStrength = 0.01f;
-const float shineDamper = 20.0f;
+const float shineDamper = 30.0f;
 const float reflectivity = 0.6f;
 
 void main(void) {

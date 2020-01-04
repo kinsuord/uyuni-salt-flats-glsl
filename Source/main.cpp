@@ -19,6 +19,7 @@ typedef struct _Shader
 	GLuint program;
 	GLuint texture;
 	GLuint texture2;
+	GLuint vbo;
 	vector<GLuint> vaos;
 	vector<int> index_counts;
 
@@ -581,11 +582,11 @@ void My_Init()
 		1000.0f, water_height, -1000.0f, 1000.0f, 0.0f,
 		1000.0f, water_height, 1000.0f, 1000.0f, 1000.0f
 	};
-	GLuint water_vao, water_vbo;
+	GLuint water_vao;
 	glGenVertexArrays(1, &water_vao);
-	glGenBuffers(1, &water_vbo);
+	glGenBuffers(1, &water.vbo);
 	glBindVertexArray(water_vao);
-	glBindBuffer(GL_ARRAY_BUFFER, water_vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, water.vbo);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(waterVertices), &waterVertices, GL_STATIC_DRAW);
 	glEnableVertexAttribArray(0);
 	glEnableVertexAttribArray(1);
@@ -679,6 +680,11 @@ void My_Init()
                " min=0 step=0.5 help='Sun Timer' group=SkyClock");
     TwAddVarRW(myBar, "Cloud Time", TW_TYPE_FLOAT, &cloud_time, 
                " min=0 step=0.5 help='Cloud timer' group=SkyClock");
+
+    TwAddVarRW(myBar, "Water Height", TW_TYPE_FLOAT, &water_height, 
+               " min=0.01 step=0.01 help='Water Height' group=Water");
+    TwAddVarRW(myBar, "Wave Speed", TW_TYPE_FLOAT, &wave_speed, 
+               " min=0.0001 step=0.0002 help='Wave Speed' group=Water");
 	TwAddButton(myBar, "Exit", My_Exit, NULL, " ");
 }
 
@@ -922,7 +928,21 @@ void My_Display()
 	glUniform3fv(uniforms.water.cameraPosition, 1, value_ptr(view_position));
 	glUniform3fv(uniforms.water.lightPosition, 1, value_ptr(sun_posi * 1000.0f));
 
+
 	glBindVertexArray(water.vaos[0]);
+	GLfloat waterVertices[] = {	
+		// Positions                    // Texture
+		-1000.0f, water_height, 1000.0f, 0.0f, 1000.0f,
+		-1000.0f, water_height, -1000.0f, 0.0f, 0.0f,
+		1000.0f, water_height, -1000.0f, 1000.0f, 0.0f,
+
+		-1000.0f, water_height, 1000.0f, 0.0f, 1000.0f,
+		1000.0f, water_height, -1000.0f, 1000.0f, 0.0f,
+		1000.0f, water_height, 1000.0f, 1000.0f, 1000.0f
+	};
+	glBindBuffer(GL_ARRAY_BUFFER, water.vbo);
+	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(waterVertices), &waterVertices);
+	
 	glDrawArrays(GL_TRIANGLES, 0, 6);
 
 
